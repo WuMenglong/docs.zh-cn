@@ -321,6 +321,89 @@ LoadFinishTime: 2019-07-27 11:50:16
 
 一般情况下，一个作业只有一个DataDescription，只会拆分成一个任务。任务会拆成与BE数相等的实例，然后分配到所有BE上并行执行。
 
+## 导入示例
+
+将存储在Hadoop中的数据文件customer.csv导入至StarRocks集群ods_data_load库的customer表中。数据文件在Hadoop中的完整路径为：/broker_test_data/customer.csv（下载链接），数据文件大
+小约为3M，共有数据5w行，其列的顺序与customer表的一致，列分隔符为“|”，前三列数据如下：
+1|Customer#000000001|j5JsirBM9P|MOROCCO  0|MOROCCO|AFRICA|25-989-741-2988|BUILDING
+2|Customer#000000002|487LW1dovn6Q4dMVym|JORDAN   1|JORDAN|MIDDLE EAST|23-768-687-3665|AUTOMOBILE
+3|Customer#000000003|fkRGN8n|ARGENTINA7|ARGENTINA|AMERICA|11-719-748-3364|AUTOMOBILE
+
+### Hadoop集群信息（非HA）
+NameNode：192.168.110.201
+fs.defaultFS端口：8020
+用户名：starrocks
+密  码：空
+
+### customer表建表语句
+create database if not exists ods_data_load;
+CREATE TABLE IF NOT EXISTS ods_data_load.`customer` (
+  `c_custkey` int(11) NOT NULL COMMENT "",
+  `c_name` varchar(26) NOT NULL COMMENT "",
+  `c_address` varchar(41) NOT NULL COMMENT "",
+  `c_city` varchar(11) NOT NULL COMMENT "",
+  `c_nation` varchar(16) NOT NULL COMMENT "",
+  `c_region` varchar(13) NOT NULL COMMENT "",
+  `c_phone` varchar(16) NOT NULL COMMENT "",
+  `c_mktsegment` varchar(11) NOT NULL COMMENT ""
+) ENGINE=OLAP
+DUPLICATE KEY(`c_custkey`)
+COMMENT "OLAP"
+DISTRIBUTED BY HASH(`c_custkey`) BUCKETS 12;
+
+### 导入分析
+数据文件为3M，超时时间无需特别设置。customer.csv中列顺序与customer表一致，也不需要在导入语句中进行列的对应。
+
+### 数据导入
+Broker Load导入命令（SQL）：
+LOAD LABEL ods_data_load.customer_label210910
+(
+    DATA INFILE("hdfs://192.168.110.201:8020/broker_test_data/customer.csv")
+    INTO TABLE customer
+    COLUMNS TERMINATED BY "|"
+    (c_custkey,c_name,c_address,c_city,c_nation,c_region,c_phone,c_mktsegment)
+)
+WITH BROKER 'hdfs_broker'
+(
+    "username" = "starrocks"
+)
+PROPERTIES
+(
+    "timeout" = "3600"
+);
+
+使用label查看导入状态：
+show load where label = 'customer_label210910'\G
+状态为FINISHED，数据导入成功。
+
+mysql> show load where label = 'customer_label210910'\G
+*************************** 1. row ***************************
+         JobId: 11293
+         Label: customer_label210910
+         State: FINISHED
+      Progress: ETL:100%; LOAD:100%
+          Type: BROKER
+       EtlInfo: unselected.rows=0; dpp.abnorm.ALL=0; dpp.norm.ALL=30000
+      TaskInfo: cluster:N/A; timeout(s):3600; max_filter_ratio:0.0
+      ErrorMsg: NULL
+    CreateTime: 2021-09-10 21:27:10
+  EtlStartTime: 2021-09-10 21:27:12
+ EtlFinishTime: 2021-09-10 21:27:12
+ LoadStartTime: 2021-09-10 21:27:12
+LoadFinishTime: 2021-09-10 21:27:14
+           URL: NULL
+    JobDetails: {"Unfinished backends":{"c03881a4-bb20-4fa2-abe8-d4d942fd1d08":[]},"ScannedRows":30000,"TaskNumber":1,"All backends":{"c03881a4-bb20-4fa2-abe8-d4d942fd1d08":
+[11119]},"FileNumber":1,"FileSize":2807046}
+1 row in set (0.01 sec)
+
+查询customer表中数据行数：
+mysql> select count(1) from ods_data_load.customer;
++----------+
+| count(1) |
++----------+
+|    30000 |
++----------+
+
 ## 常见问题
 
 * Q：数据质量问题报错：ETL_QUALITY_UNSATISFIED; msg:quality not good enough to cancel
