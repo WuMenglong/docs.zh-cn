@@ -157,7 +157,67 @@ Stream Load的默认超时为300秒，按照StarRocks目前最大的导入限速
 
 例如：导入一个 10GB 的文件，timeout应该设为1000s。
 
-### 完整例子
+### 导入示例1
+将本地数据文件/opt/datafile/car_status_2021091001_utf8.csv导入至StarRocks集群ods_data_load库的car_status表中。数据文件car_status_2021091001_utf8.csv中有数据1000行（下载链
+接），其列的数据顺序为did、load_weight、speed、voltage、timestamp，列分隔符为英文逗号，前三行数据如下：
+10580,0.0,13.0,475.0,1537436416686
+10580,0.0,25.0,495.0,1537436447655
+10580,0.0,1.0,465.0,1537436475628
+
+## StarRocks集群信息
+FE Leader：172.28.244.145
+FE http_port：8030
+用户名：root
+密  码：123456
+
+## car_status表建表语句
+create database if not exist ods_data_load;
+CREATE TABLE IF NOT EXISTS ods_data_load.`car_status` (
+  `did` int(11) NOT NULL COMMENT "",
+  `timestamp` bigint(20) NOT NULL COMMENT "",
+  `load_weight` float NULL COMMENT "",
+  `speed` float NULL COMMENT "",
+  `voltage` float NULL COMMENT ""
+)
+DUPLICATE KEY(`did`, `timestamp`)
+DISTRIBUTED BY HASH(`did`) BUCKETS 10;
+
+## 导入分析
+因数据文件car_status_2021091001_utf8.csv中的列顺序与car_status表的列顺序不完全一致，在使用Stream Load导入时需要进行列名对应。
+
+## 数据导入
+Stream Load导入命令（Bash）：
+curl --location-trusted -u root:123456 -H "label:car_status_2021091001" -H "column_separator:," -H "columns:did,load_weight,speed,voltage,timestamp" -T
+/opt/datafile/car_status_2021091001_utf8.csv http://172.28.244.145:8030/api/ods_data_load/car_status/_stream_load
+
+状态为Success，数据导入成功：
+{
+    "TxnId": 1004,
+    "Label": "car_status_2021091001",
+    "Status": "Success",
+    "Message": "OK",
+    "NumberTotalRows": 1000,
+    "NumberLoadedRows": 1000,
+    "NumberFilteredRows": 0,
+    "NumberUnselectedRows": 0,
+    "LoadBytes": 35293,
+    "LoadTimeMs": 36,
+    "BeginTxnTimeMs": 2,
+    "StreamLoadPutTimeMs": 6,
+    "ReadDataTimeMs": 0,
+    "WriteDataTimeMs": 5,
+    "CommitAndPublishTimeMs": 21
+}
+
+查询car_status表中数据行数：
+mysql> select count(1) from ods_data_load.car_status;
++----------+
+| count(1) |
++----------+
+|     1000 |
++----------+
+
+### 导入示例2
 
 **数据情况**：数据在客户端本地磁盘路径 /home/store-sales 中，导入的数据量约为 15GB，希望导入到数据库 bj-sales 的表 store-sales 中。
 
